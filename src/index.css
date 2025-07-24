@@ -12,3 +12,41 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Dynamic text color utilities */
+.text-dynamic-primary {
+  color: var(--dynamic-text-primary, #111827);
+}
+
+.text-dynamic-secondary {
+  color: var(--dynamic-text-secondary, #6b7280);
+}
+
+.text-dynamic-muted {
+  color: var(--dynamic-text-muted, #9ca3af);
+}
+
+/* Override hardcoded text colors with dynamic ones */
+.dynamic-content .text-gray-900 {
+  color: var(--dynamic-text-primary, #111827) !important;
+}
+
+.dynamic-content .text-gray-800 {
+  color: var(--dynamic-text-primary, #111827) !important;
+}
+
+.dynamic-content .text-gray-700 {
+  color: var(--dynamic-text-primary, #111827) !important;
+}
+
+.dynamic-content .text-gray-600 {
+  color: var(--dynamic-text-secondary, #6b7280) !important;
+}
+
+.dynamic-content .text-gray-500 {
+  color: var(--dynamic-text-muted, #9ca3af) !important;
+}
+
+.dynamic-content .text-gray-400 {
+  color: var(--dynamic-text-muted, #9ca3af) !important;
+}

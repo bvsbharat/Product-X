@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Layout from "@/components/Layout";
 import Home from "@/pages/Home";
 import Weather from "@/pages/Weather";
 import Events from "@/pages/Events";
@@ -18,8 +19,8 @@ export default function App() {
 
   // Check if user was previously authenticated (optional: persist login state)
   useEffect(() => {
-    const savedAuthState = localStorage.getItem('isAuthenticated');
-    if (savedAuthState === 'true') {
+    const savedAuthState = localStorage.getItem("isAuthenticated");
+    if (savedAuthState === "true") {
       setIsAuthenticated(true);
       setShowLoginModal(false);
     }
@@ -27,24 +28,29 @@ export default function App() {
 
   // Save authentication state
   useEffect(() => {
-    localStorage.setItem('isAuthenticated', isAuthenticated.toString());
+    localStorage.setItem("isAuthenticated", isAuthenticated.toString());
   }, [isAuthenticated]);
 
   return (
     <>
       {/* Always render the dashboard components */}
       <Router>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/weather" element={<Weather />} />
-          <Route path="/events" element={<Events />} />
-          <Route path="/workout" element={<Workout />} />
-          <Route path="/photos" element={<Photos />} />
-        </Routes>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/weather" element={<Weather />} />
+            <Route path="/events" element={<Events />} />
+            <Route path="/workout" element={<Workout />} />
+            <Route path="/photos" element={<Photos />} />
+          </Routes>
+        </Layout>
       </Router>
-      
+
       {/* Login modal overlay */}
-      <LoginModal isOpen={showLoginModal && !isAuthenticated} onLogin={handleLogin} />
+      <LoginModal
+        isOpen={showLoginModal && !isAuthenticated}
+        onLogin={handleLogin}
+      />
     </>
   );
 }

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Eye, EyeOff, Lock, User } from 'lucide-react';
+import React, { useState } from "react";
+import { Eye, EyeOff, Lock, User } from "lucide-react";
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -7,21 +7,21 @@ interface LoginModalProps {
 }
 
 export default function LoginModal({ isOpen, onLogin }: LoginModalProps) {
-  const [username, setUsername] = useState('demo');
-  const [password, setPassword] = useState('demo123');
+  const [username, setUsername] = useState("demo");
+  const [password, setPassword] = useState("demo123");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
+
     // Simulate login delay
     setTimeout(() => {
-      if (username === 'demo' && password === 'demo123') {
+      if (username === "demo" && password === "demo123") {
         onLogin();
       } else {
-        alert('Invalid credentials. Please use demo/demo123');
+        alert("Invalid credentials. Please use demo/demo123");
       }
       setIsLoading(false);
     }, 1000);
@@ -33,7 +33,7 @@ export default function LoginModal({ isOpen, onLogin }: LoginModalProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop with blur effect - reduced opacity to show dashboard behind */}
       <div className="absolute inset-0 bg-black/10 backdrop-blur-sm" />
-      
+
       {/* Modal Container */}
       <div className="relative z-10 w-full max-w-md mx-4">
         {/* Glass effect modal */}
@@ -43,11 +43,13 @@ export default function LoginModal({ isOpen, onLogin }: LoginModalProps) {
             <div className="w-16 h-16 bg-blue-500 rounded-2xl mx-auto mb-4 flex items-center justify-center">
               <Lock className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome Back</h2>
-            <p className="text-gray-700 text-sm">Sign in to access your weekend dashboard</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              Welcome Back
+            </h2>
+            <p className="text-gray-700 text-sm">
+              Sign in to access your weekend dashboard
+            </p>
           </div>
-
-
 
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -77,7 +79,7 @@ export default function LoginModal({ isOpen, onLogin }: LoginModalProps) {
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
                 <input
-                  type={showPassword ? 'text' : 'password'}
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full bg-white/30 border border-white/40 rounded-xl pl-12 pr-12 py-3 text-gray-900 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400/50 focus:border-transparent transition-all duration-200"
@@ -89,7 +91,11 @@ export default function LoginModal({ isOpen, onLogin }: LoginModalProps) {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors duration-200"
                 >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  {showPassword ? (
+                    <EyeOff className="w-5 h-5" />
+                  ) : (
+                    <Eye className="w-5 h-5" />
+                  )}
                 </button>
               </div>
             </div>
@@ -106,7 +112,7 @@ export default function LoginModal({ isOpen, onLogin }: LoginModalProps) {
                   Signing in...
                 </div>
               ) : (
-                'Sign In'
+                "Sign In"
               )}
             </button>
           </form>
