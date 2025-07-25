@@ -26,6 +26,7 @@ import {
 import { useEmails } from "../hooks/useEmails";
 import { useCalendarEvents } from "../hooks/useCalendarEvents";
 import { formatEmailTime } from "../utils/timeFormat";
+import VoiceAgent from "../components/VoiceAgent";
 
 export default function Home() {
   const [weather, setWeather] = useState<WeatherData | null>(null);
@@ -181,14 +182,23 @@ export default function Home() {
             <span>Refresh All</span>
           </button>
         </div>
-        <p className="text-gray-600 text-sm leading-relaxed">
-          {summary}
-        </p>
-        {summaryDetails.map((detail, index) => (
-          <p key={index} className="text-gray-500 text-xs leading-relaxed mt-2">
-            {detail}
-          </p>
-        ))}
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <p className="text-gray-600 text-sm leading-relaxed">
+              {summary}
+            </p>
+            {summaryDetails.map((detail, index) => (
+              <p key={index} className="text-gray-500 text-xs leading-relaxed mt-2">
+                {detail}
+              </p>
+            ))}
+          </div>
+          
+          {/* Voice Agent Avatar */}
+          <div className="ml-6">
+            <VoiceAgent className="" />
+          </div>
+        </div>
       </div>
 
       {/* Special Moments and Weather Section */}
