@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Cloud, Sun, CloudRain, MapPin, Thermometer, Droplets, Wind, Eye } from 'lucide-react';
-import { getWeatherData, WeatherData } from '../services/mockApi';
+import { getWeatherData, WeatherData } from '../services/api';
 
 interface HourlyWeather {
   time: string;

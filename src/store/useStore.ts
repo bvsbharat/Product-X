@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { WeatherData, Event, WorkoutData, PhotoMemory } from '@/services/mockApi';
+import { WeatherData, Event, WorkoutData, PhotoMemory } from '@/services/api';
 
 interface AppState {
   // Weather state

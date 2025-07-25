@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
   Calendar,
@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   Star,
   TrendingUp,
+  RefreshCw,
 } from "lucide-react";
 import {
   getWeatherData,
@@ -21,7 +22,7 @@ import {
   WorkoutData,
   PhotoMemory,
   Email,
-} from "../services/mockApi";
+} from "../services/api";
 
 export default function Home() {
   const [weather, setWeather] = useState<WeatherData | null>(null);
@@ -31,6 +32,17 @@ export default function Home() {
   const [emails, setEmails] = useState<Email[]>([]);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [expandedEmailId, setExpandedEmailId] = useState<string | null>(null);
+  const [emailsLoading, setEmailsLoading] = useState(false);
+  const [emailsError, setEmailsError] = useState<string | null>(null);
+  const [emailSource, setEmailSource] = useState<string | null>(null);
+  
+  // Events state
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+  const [eventSource, setEventSource] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   const photoImages = [
     "https://trae-api-us.mchost.guru/api/ide/v1/text_to_image?prompt=woman%20sitting%20on%20steps%20in%20front%20of%20modern%20architecture%20building%20with%20geometric%20patterns%20sunny%20day%20urban%20setting&image_size=square",
@@ -53,27 +65,93 @@ export default function Home() {
     setExpandedEmailId(null);
   };
 
+  const refreshEmails = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      setEmailsLoading(true);
+      setEmailsError(null);
+      
+      console.log('🔄 Fetching emails from API...');
+      const emailsData = await getEmails();
+      
+      // Handle direct array response from API service
+      if (Array.isArray(emailsData)) {
+        setEmails(emailsData);
+        setEmailSource('API');
+        console.log(`📧 Loaded ${emailsData.length} emails from API source`);
+        setLastRefresh(new Date());
+      } else {
+        throw new Error('Invalid email data format');
+      }
+    } catch (error) {
+      console.error('❌ Failed to refresh emails:', error);
+      setEmailsError(error instanceof Error ? error.message : 'Failed to fetch emails');
+      setEmails([]);
+      setEmailSource(null);
+    } finally {
+      setIsRefreshing(false);
+      setEmailsLoading(false);
+    }
+  }, []);
+
+  const refreshEvents = async () => {
+    await fetchEvents();
+  };
+
+  const fetchEvents = async () => {
+    setEventsLoading(true);
+    setEventsError(null);
+    
+    try {
+      const eventsData = await getEvents();
+      
+      // Handle direct array response from API service
+      if (Array.isArray(eventsData)) {
+        setEvents(eventsData.slice(0, 3));
+        setEventSource('API');
+      } else {
+        throw new Error('Invalid events data format');
+      }
+    } catch (error) {
+      console.error('Error fetching events:', error);
+      setEventsError(error instanceof Error ? error.message : 'Failed to load events');
+    } finally {
+      setEventsLoading(false);
+    }
+  };
+
   const expandedEmail = emails.find((email) => email.id === expandedEmailId);
 
   useEffect(() => {
     const loadData = async () => {
-      const [weatherData, eventsData, workoutData, photosData, emailsData] =
-        await Promise.all([
-          getWeatherData(),
-          getEvents(),
-          getWorkoutData(),
-          getPhotoMemories(),
-          getEmails(),
-        ]);
-      setWeather(weatherData);
-      setEvents(eventsData.slice(0, 3));
-      setWorkout(workoutData);
-      setPhotos(photosData.slice(0, 1));
-      setEmails(emailsData);
+      try {
+        const [weatherData, workoutData, photosData] =
+          await Promise.all([
+            getWeatherData(),
+            getWorkoutData(),
+            getPhotoMemories(),
+          ]);
+        setWeather(weatherData);
+        setWorkout(workoutData);
+        setPhotos(photosData.slice(0, 1));
+        
+        // Load emails and events separately with error handling
+        await refreshEmails();
+        await fetchEvents();
+      } catch (error) {
+        console.error('Failed to load initial data:', error);
+      }
     };
 
     loadData();
-  }, []);
+
+    // Auto-refresh emails every 5 minutes
+    const emailRefreshInterval = setInterval(refreshEmails, 5 * 60 * 1000);
+
+    return () => {
+      clearInterval(emailRefreshInterval);
+    };
+  }, [refreshEmails]);
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -304,48 +382,104 @@ export default function Home() {
           {!expandedEmailId ? (
             // Email List View
             <>
-              <div className="flex items-center mb-4">
-                <Mail className="w-5 h-5 text-gray-600 mr-3" />
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Important Emails
-                </h3>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center">
+                  <Mail className="w-5 h-5 text-gray-600 mr-3" />
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Latest Emails
+                  </h3>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {emailSource && (
+                    <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
+                      {emailSource === 'mcp' ? 'Live' : 'Demo'}
+                    </span>
+                  )}
+                  <span className="text-xs text-gray-500">
+                    Updated {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  <button
+                    onClick={refreshEmails}
+                    disabled={isRefreshing || emailsLoading}
+                    className="p-1 text-gray-500 hover:text-gray-700 transition-colors duration-200 disabled:opacity-50"
+                    title="Refresh emails"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isRefreshing || emailsLoading ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-3 flex-1 overflow-y-auto">
-                {emails.slice(0, 3).map((email) => (
-                  <div
-                    key={email.id}
-                    className="border-b border-gray-200 pb-3 last:border-b-0 cursor-pointer hover:bg-gray-50 rounded-lg p-2 -m-2 transition-colors duration-200"
-                    onClick={() => handleEmailClick(email.id)}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h4
-                          className={`text-sm font-medium ${
-                            email.isRead ? "text-gray-600" : "text-gray-900"
-                          }`}
-                        >
-                          {email.subject}
-                        </h4>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {email.sender}
-                        </p>
-                        <p className="text-xs text-gray-600 mt-2 leading-relaxed">
-                          {email.summary}
-                        </p>
-                      </div>
-                      <div className="flex items-center ml-4">
-                        <span className="text-xs text-gray-500">
-                          {email.time}
-                        </span>
-                        {!email.isRead && (
-                          <div className="w-2 h-2 bg-blue-500 rounded-full ml-2"></div>
-                        )}
-                      </div>
+                {emailsLoading ? (
+                  <div className="flex items-center justify-center h-32 text-gray-500">
+                    <div className="text-center">
+                      <RefreshCw className="w-8 h-8 mx-auto mb-2 opacity-50 animate-spin" />
+                      <p className="text-sm">Loading emails...</p>
                     </div>
                   </div>
-                ))}
-              </div>
+                ) : emailsError ? (
+                  <div className="flex items-center justify-center h-32 text-gray-500">
+                    <div className="text-center">
+                      <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50 text-red-500" />
+                      <p className="text-sm text-red-600">Failed to load emails</p>
+                      <p className="text-xs text-gray-500 mt-1">{emailsError}</p>
+                      <button
+                        onClick={refreshEmails}
+                        className="text-xs text-blue-500 hover:text-blue-700 mt-2"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  </div>
+                ) : emails.length === 0 ? (
+                  <div className="flex items-center justify-center h-32 text-gray-500">
+                    <div className="text-center">
+                      <Mail className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No emails found</p>
+                      <button
+                        onClick={refreshEmails}
+                        className="text-xs text-blue-500 hover:text-blue-700 mt-1"
+                      >
+                        Try refreshing
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  emails.slice(0, 5).map((email) => (
+                     <div
+                       key={email.id}
+                       className="border-b border-gray-200 pb-3 last:border-b-0 cursor-pointer hover:bg-gray-50 rounded-lg p-2 -m-2 transition-colors duration-200"
+                       onClick={() => handleEmailClick(email.id)}
+                     >
+                       <div className="flex items-start justify-between">
+                         <div className="flex-1">
+                           <h4
+                             className={`text-sm font-medium ${
+                               email.isRead ? "text-gray-600" : "text-gray-900"
+                             }`}
+                           >
+                             {email.subject}
+                           </h4>
+                           <p className="text-xs text-gray-500 mt-1">
+                             {email.sender}
+                           </p>
+                           <p className="text-xs text-gray-600 mt-2 leading-relaxed">
+                             {email.summary}
+                           </p>
+                         </div>
+                         <div className="flex items-center ml-4">
+                           <span className="text-xs text-gray-500">
+                             {email.time}
+                           </span>
+                           {!email.isRead && (
+                             <div className="w-2 h-2 bg-blue-500 rounded-full ml-2"></div>
+                           )}
+                         </div>
+                       </div>
+                     </div>
+                   ))
+                 )}
+               </div>
             </>
           ) : (
             // Expanded Email View
@@ -409,49 +543,84 @@ export default function Home() {
         {/* Events Section */}
         <div>
           <p className="text-gray-600 text-xs mb-3 leading-relaxed">
-            You have <span className="text-blue-500">3 events</span> today.
+            You have <span className="text-blue-500">{events.length} events</span> today.
           </p>
 
-          <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 shadow-lg h-64 flex flex-col justify-center">
-            <div className="space-y-5">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
-                <div className="flex items-center">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full mr-4"></div>
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">
-                      10:00 AM
-                    </div>
-                    <div className="text-xs text-gray-600">Pilates</div>
-                  </div>
-                </div>
-                <div className="text-xs text-gray-500">1h</div>
+          <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 shadow-lg h-64 flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center">
+                <Calendar className="w-5 h-5 text-gray-600 mr-3" />
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Today's Events
+                </h3>
               </div>
+              <div className="flex items-center space-x-2">
+                {eventSource && (
+                  <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
+                    {eventSource === 'mcp' ? 'Live' : 'Demo'}
+                  </span>
+                )}
+                <button
+                  onClick={refreshEvents}
+                  disabled={eventsLoading}
+                  className="p-1 text-gray-500 hover:text-gray-700 transition-colors duration-200 disabled:opacity-50"
+                  title="Refresh events"
+                >
+                  <RefreshCw className={`w-4 h-4 ${eventsLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            </div>
 
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
-                <div className="flex items-center">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full mr-4"></div>
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">
-                      12:30 PM
-                    </div>
-                    <div className="text-xs text-gray-600">Meeting</div>
+            <div className="flex-1 overflow-y-auto">
+              {eventsLoading ? (
+                <div className="flex items-center justify-center h-32 text-gray-500">
+                  <div className="text-center">
+                    <RefreshCw className="w-8 h-8 mx-auto mb-2 opacity-50 animate-spin" />
+                    <p className="text-sm">Loading events...</p>
                   </div>
                 </div>
-                <div className="text-xs text-gray-500">30m</div>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
-                <div className="flex items-center">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full mr-4"></div>
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">
-                      4:30 PM
-                    </div>
-                    <div className="text-xs text-gray-600">Coffee</div>
+              ) : eventsError ? (
+                <div className="flex items-center justify-center h-32 text-gray-500">
+                  <div className="text-center">
+                    <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50 text-red-500" />
+                    <p className="text-sm text-red-600">Failed to load events</p>
+                    <p className="text-xs text-gray-500 mt-1">{eventsError}</p>
+                    <button
+                      onClick={refreshEvents}
+                      className="text-xs text-blue-500 hover:text-blue-700 mt-2"
+                    >
+                      Try again
+                    </button>
                   </div>
                 </div>
-                <div className="text-xs text-gray-500">45m</div>
-              </div>
+              ) : events.length === 0 ? (
+                <div className="flex items-center justify-center h-32 text-gray-500">
+                  <div className="text-center">
+                    <Calendar className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No events today</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {events.map((event) => (
+                    <div key={event.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
+                      <div className="flex items-center">
+                        <div className="w-2 h-2 bg-gray-400 rounded-full mr-4"></div>
+                        <div>
+                          <div className="text-sm font-semibold text-gray-900">
+                            {event.time}
+                          </div>
+                          <div className="text-xs text-gray-600">{event.title}</div>
+                          {event.description && (
+                            <div className="text-xs text-gray-500 mt-1">{event.description}</div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500">{event.duration || '1h'}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

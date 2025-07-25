@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Activity, Calendar, Clock, Flame, Target, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
-import { getWorkoutData, WorkoutData } from '../services/mockApi';
+import { getWorkoutData, WorkoutData } from '../services/api';
 
 interface WorkoutSession {
   id: string;

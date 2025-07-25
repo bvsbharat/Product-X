@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Calendar, Plus, MapPin, Clock, Filter, Search } from 'lucide-react';
-import { getEvents, Event } from '../services/mockApi';
+import { getEvents, Event } from '../services/api';
 
 type EventCategory = 'meeting' | 'personal' | 'fitness' | 'social';
 
