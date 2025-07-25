@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Calendar, Plus, MapPin, Clock, Filter, Search, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Calendar, Plus, MapPin, Clock, Filter, Search, RefreshCw, Database, Wifi } from 'lucide-react';
 import { Event } from '../services/api';
 import { useCalendarEvents } from '../hooks/useCalendarEvents';
 import { useStore } from '../store/useStore';
@@ -27,7 +27,7 @@ export default function Events() {
     getCacheStatus,
   } = useCalendarEvents();
   
-  const { addEvent } = useStore();
+  const { addEvent, useMockData, cacheEnabled } = useStore();
   
   const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -153,11 +153,25 @@ export default function Events() {
               <ArrowLeft className="w-6 h-6 text-gray-600 hover:text-gray-800" />
             </Link>
             <h1 className="text-2xl font-bold text-gray-800">Events</h1>
-            {eventSource && (
-              <span className="ml-3 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
-                {eventSource} • {getCacheStatus()}
-              </span>
-            )}
+            <div className="ml-3 flex items-center space-x-2">
+              {eventSource && (
+                <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full flex items-center">
+                  <Wifi className="w-3 h-3 mr-1" />
+                  {eventSource}
+                </span>
+              )}
+              {useMockData && (
+                <span className="px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded-full flex items-center">
+                  <Database className="w-3 h-3 mr-1" />
+                  Mock Data
+                </span>
+              )}
+              {cacheEnabled && (
+                <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
+                  {getCacheStatus()}
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-center space-x-2">
             <button

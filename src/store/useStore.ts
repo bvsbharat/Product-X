@@ -14,6 +14,10 @@ interface AppState {
   eventSource: string | null;
   lastEventRefresh: Date;
   
+  // Cache settings
+  cacheEnabled: boolean;
+  useMockData: boolean;
+  
   // Workout state
   workout: WorkoutData | null;
   workoutLoading: boolean;
@@ -59,6 +63,10 @@ interface AppState {
   updateEmailsCacheTimestamp: () => void;
   updateLastEmailRefresh: () => void;
   clearEmailsCache: () => void;
+  
+  // Cache settings actions
+  setCacheEnabled: (enabled: boolean) => void;
+  setUseMockData: (useMock: boolean) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -85,6 +93,10 @@ export const useStore = create<AppState>((set) => ({
   emailsCacheTimestamp: null,
   emailSource: null,
   lastEmailRefresh: new Date(),
+  
+  // Cache settings initial state
+  cacheEnabled: true,
+  useMockData: false,
   
   // Weather actions
   setWeather: (weather) => set({ weather }),
@@ -134,4 +146,8 @@ export const useStore = create<AppState>((set) => ({
     emailSource: null,
     emailsError: null 
   }),
+  
+  // Cache settings actions
+  setCacheEnabled: (cacheEnabled) => set({ cacheEnabled }),
+  setUseMockData: (useMockData) => set({ useMockData }),
 }));

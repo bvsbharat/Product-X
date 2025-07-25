@@ -20,6 +20,8 @@ export const useCalendarEvents = () => {
     eventsCacheTimestamp,
     eventSource,
     lastEventRefresh,
+    cacheEnabled,
+    useMockData,
     setEvents,
     setEventsLoading,
     setEventsError,
@@ -32,6 +34,10 @@ export const useCalendarEvents = () => {
   // Load cached data from localStorage on mount
   useEffect(() => {
     const loadCachedData = () => {
+      if (!cacheEnabled) {
+        return;
+      }
+      
       try {
         const cachedData = localStorage.getItem(CACHE_KEY);
         if (cachedData) {
@@ -57,11 +63,11 @@ export const useCalendarEvents = () => {
     };
 
     loadCachedData();
-  }, []);
+  }, [cacheEnabled]);
 
   // Save to localStorage when events change
   useEffect(() => {
-    if (events.length > 0 && eventsCacheTimestamp && eventSource) {
+    if (cacheEnabled && events.length > 0 && eventsCacheTimestamp && eventSource) {
       try {
         const cacheData: CalendarEventCache = {
           events,
@@ -74,7 +80,7 @@ export const useCalendarEvents = () => {
         console.error('Error saving calendar events to cache:', error);
       }
     }
-  }, [events, eventsCacheTimestamp, eventSource, lastEventRefresh]);
+  }, [cacheEnabled, events, eventsCacheTimestamp, eventSource, lastEventRefresh]);
 
   const isCacheValid = useCallback((timestamp: Date | null): boolean => {
     if (!timestamp) return false;
@@ -87,30 +93,37 @@ export const useCalendarEvents = () => {
       setEventsLoading(true);
       setEventsError(null);
       
-      // Try to fetch from MCP agent first, then fallback to regular API
       let fetchedEvents: Event[];
       let source = 'API';
       
-      try {
-        // Attempt to fetch from MCP agent
-        const response = await fetch('http://localhost:3000/mcp/calendar', {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-        
-        if (response.ok) {
-          const mcpData = await response.json();
-          fetchedEvents = mcpData.events || [];
-          source = 'MCP Agent';
-        } else {
-          throw new Error('MCP agent not available');
+      if (useMockData) {
+        // Force use mock data from mockApi
+        const { getEvents: getMockEvents } = await import('@/services/mockApi');
+        fetchedEvents = await getMockEvents();
+        source = 'Mock Data';
+      } else {
+        // Try to fetch from MCP agent first, then fallback to regular API
+        try {
+          // Attempt to fetch from MCP agent
+          const response = await fetch('http://localhost:3000/mcp/calendar', {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          });
+          
+          if (response.ok) {
+            const mcpData = await response.json();
+            fetchedEvents = mcpData.events || [];
+            source = 'MCP Agent';
+          } else {
+            throw new Error('MCP agent not available');
+          }
+        } catch (mcpError) {
+          console.warn('MCP agent unavailable, falling back to regular API:', mcpError);
+          fetchedEvents = await getEvents();
+          source = 'API';
         }
-      } catch (mcpError) {
-        console.warn('MCP agent unavailable, falling back to regular API:', mcpError);
-        fetchedEvents = await getEvents();
-        source = 'API';
       }
       
       setEvents(fetchedEvents);
@@ -127,13 +140,18 @@ export const useCalendarEvents = () => {
     } finally {
       setEventsLoading(false);
     }
-  }, [setEvents, setEventsLoading, setEventsError, setEventSource, updateEventsCacheTimestamp, updateLastEventRefresh]);
+  }, [useMockData, setEvents, setEventsLoading, setEventsError, setEventSource, updateEventsCacheTimestamp, updateLastEventRefresh]);
 
   const refreshEvents = useCallback(async (): Promise<Event[]> => {
     return fetchEventsFromAPI(true);
   }, [fetchEventsFromAPI]);
 
   const loadEventsWithCache = useCallback(async (): Promise<Event[]> => {
+    // If cache is disabled or mock data is forced, always fetch fresh data
+    if (!cacheEnabled || useMockData) {
+      return fetchEventsFromAPI();
+    }
+    
     // Check if we have valid cached data
     if (events.length > 0 && isCacheValid(eventsCacheTimestamp)) {
       return events;
@@ -141,7 +159,7 @@ export const useCalendarEvents = () => {
     
     // If no valid cache, fetch from API
     return fetchEventsFromAPI();
-  }, [events, eventsCacheTimestamp, isCacheValid, fetchEventsFromAPI]);
+  }, [cacheEnabled, useMockData, events, eventsCacheTimestamp, isCacheValid, fetchEventsFromAPI]);
 
   const getCacheStatus = useCallback(() => {
     if (!eventsCacheTimestamp) return 'No cache';

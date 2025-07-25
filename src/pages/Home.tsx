@@ -16,6 +16,7 @@ import {
   getEvents,
   getWorkoutData,
   getPhotoMemories,
+  generateSummary,
   WeatherData,
   Event,
   WorkoutData,
@@ -27,9 +28,16 @@ import { useCalendarEvents } from "../hooks/useCalendarEvents";
 
 export default function Home() {
   const [weather, setWeather] = useState<WeatherData | null>(null);
-
   const [workout, setWorkout] = useState<WorkoutData | null>(null);
   const [photos, setPhotos] = useState<PhotoMemory[]>([]);
+  const [summary, setSummary] = useState<string>(
+    "Start your weekend with this briefing."
+  );
+  const [summaryDetails, setSummaryDetails] = useState<string[]>([
+    "This week featured 6 workout sessions totaling 5:29:45,",
+    "4 important emails requiring attention, and memorable moments captured in New York.",
+    "Your schedule includes pilates, team meetings, and travel confirmations."
+  ]);
   const {
     emails,
     emailsLoading,
@@ -115,6 +123,31 @@ export default function Home() {
     // Note: Removed auto-refresh interval - emails now use cache and only refresh on user action
   }, [loadEmailsWithCache, loadEventsWithCache]);
 
+  // Generate summary when emails and events are loaded
+   useEffect(() => {
+     const generateDailySummary = async () => {
+       if (emails.length > 0 || events.length > 0) {
+         try {
+           const summaryData = await generateSummary(
+             emails.slice(0, 10), // Limit to recent emails
+             events
+           );
+           
+           if (summaryData.summary) {
+             setSummary(summaryData.summary);
+             // Clear the default details when we have a generated summary
+             setSummaryDetails([]);
+           }
+         } catch (error) {
+           console.error("Failed to generate summary:", error);
+           // Keep default summary on error
+         }
+       }
+     };
+ 
+     generateDailySummary();
+   }, [emails, events]);
+
   return (
     <div className="max-w-6xl mx-auto">
       {/* Header */}
@@ -123,19 +156,13 @@ export default function Home() {
           Welcome to bharat
         </h1>
         <p className="text-gray-600 text-sm leading-relaxed">
-          Start your weekend with this briefing.
+          {summary}
         </p>
-        <p className="text-gray-500 text-xs leading-relaxed mt-2">
-          This week featured 6 workout sessions totaling 5:29:45,
-        </p>
-        <p className="text-gray-500 text-xs leading-relaxed">
-          4 important emails requiring attention, and memorable moments captured
-          in New York.
-        </p>
-        <p className="text-gray-500 text-xs leading-relaxed">
-          Your schedule includes pilates, team meetings, and travel
-          confirmations.
-        </p>
+        {summaryDetails.map((detail, index) => (
+          <p key={index} className="text-gray-500 text-xs leading-relaxed mt-2">
+            {detail}
+          </p>
+        ))}
       </div>
 
       {/* Special Moments and Weather Section */}
@@ -222,12 +249,13 @@ export default function Home() {
                       Urgent Items
                     </div>
                     <div className="text-xs opacity-90 text-white">
-                      {
-                        emails.filter(
-                          (email) => email.priority === "high" && !email.isRead
-                        ).length
-                      }{" "}
-                      high priority emails
+                      {emails.filter(
+                        (email) => email.priority === "high" && !email.isRead
+                      ).length === 0
+                        ? "No urgent items"
+                        : `${emails.filter(
+                            (email) => email.priority === "high" && !email.isRead
+                          ).length} high priority emails`}
                     </div>
                   </div>
                 </div>
@@ -639,22 +667,6 @@ export default function Home() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {/* Summary Stats */}
-                  <div className="grid grid-cols-2 gap-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-blue-600">
-                        {events.length}
-                      </div>
-                      <div className="text-xs text-gray-600">Total Events</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-purple-600">
-                        {events.filter((e) => e.time?.includes("PM")).length}
-                      </div>
-                      <div className="text-xs text-gray-600">PM Events</div>
-                    </div>
-                  </div>
-
                   {/* Events List */}
                   <div className="space-y-3">
                     {events.map((event) => (
@@ -675,6 +687,11 @@ export default function Home() {
                         <div className="flex-1 ml-4">
                           <div className="font-semibold text-gray-900 text-base">
                             {event.title}
+                            {event.description && (
+                              <span className="ml-2 text-sm font-normal text-gray-600">
+                                - {event.description}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="flex-shrink-0">

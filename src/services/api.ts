@@ -214,6 +214,37 @@ export const getAvailableTools = async (): Promise<Array<{ name: string; descrip
   return apiRequest<Array<{ name: string; description: string; server: string }>>('/agent/tools', undefined, mockTools);
 };
 
+// Summary API
+export const generateSummary = async (emails: Email[], events: Event[]): Promise<{ summary: string; fallback?: boolean }> => {
+  const fallbackSummary = "📅 Your day is shaping up nicely! 📧 You have some emails to review and 🗓️ several events on your calendar. Stay organized and have a productive day! ✨";
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/agent/summary`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ emails, events }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Summary API failed: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return {
+      summary: data.data.summary,
+      fallback: data.data.fallback || false
+    };
+  } catch (error) {
+    console.warn('Summary API failed, using fallback:', error);
+    return {
+      summary: fallbackSummary,
+      fallback: true
+    };
+  }
+};
+
 // Weather API (fallback to mock data for now)
 export const getWeatherData = async (): Promise<WeatherData> => {
   // For now, return mock data since we don't have a weather backend endpoint

@@ -1,11 +1,12 @@
 import React from "react";
-import { X, Palette, Check, Container, FileText } from "lucide-react";
+import { X, Palette, Check, Container, FileText, Database, RefreshCw } from "lucide-react";
 import {
   useThemeStore,
   ThemeOption,
   ContainerBgOption,
   MainContentBgOption,
 } from "../store/useThemeStore";
+import { useStore } from "../store/useStore";
 
 interface ThemeModalProps {
   isOpen: boolean;
@@ -24,6 +25,14 @@ const ThemeModal: React.FC<ThemeModalProps> = ({ isOpen, onClose }) => {
     mainContentBgOptions,
     setMainContentBg,
   } = useThemeStore();
+  
+  const {
+    cacheEnabled,
+    useMockData,
+    setCacheEnabled,
+    setUseMockData,
+    clearEventsCache,
+  } = useStore();
 
   const handleThemeSelect = (theme: ThemeOption) => {
     setTheme(theme);
@@ -59,10 +68,10 @@ const ThemeModal: React.FC<ThemeModalProps> = ({ isOpen, onClose }) => {
             </div>
             <div>
               <h2 className="text-xl font-bold text-gray-900">
-                Theme Settings
+                App Settings
               </h2>
               <p className="text-sm text-gray-600">
-                Choose your preferred background theme
+                Customize theme and data preferences
               </p>
             </div>
           </div>
@@ -228,6 +237,81 @@ const ThemeModal: React.FC<ThemeModalProps> = ({ isOpen, onClose }) => {
               })}
             </div>
           </div>
+          
+          {/* Data Settings Section */}
+          <div>
+            <div className="flex items-center space-x-2 mb-4">
+              <Database className="w-5 h-5 text-gray-700" />
+              <h3 className="text-lg font-semibold text-gray-900">
+                Data Settings
+              </h3>
+            </div>
+            <div className="space-y-4">
+              {/* Cache Toggle */}
+              <div className="flex items-center justify-between p-4 bg-white/50 rounded-xl border border-gray-200">
+                <div className="flex items-center space-x-3">
+                  <RefreshCw className="w-5 h-5 text-gray-600" />
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">
+                      Enable Caching
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      Cache data locally for faster loading
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setCacheEnabled(!cacheEnabled);
+                    if (!cacheEnabled) {
+                      clearEventsCache();
+                    }
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                    cacheEnabled ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
+                  aria-label={`${cacheEnabled ? 'Disable' : 'Enable'} caching`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${
+                      cacheEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+              
+              {/* Mock Data Toggle */}
+              <div className="flex items-center justify-between p-4 bg-white/50 rounded-xl border border-gray-200">
+                <div className="flex items-center space-x-3">
+                  <Database className="w-5 h-5 text-gray-600" />
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">
+                      Use Mock Data
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      Show sample data instead of real data
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setUseMockData(!useMockData);
+                    clearEventsCache();
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 ${
+                    useMockData ? 'bg-orange-600' : 'bg-gray-300'
+                  }`}
+                  aria-label={`${useMockData ? 'Disable' : 'Enable'} mock data`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${
+                      useMockData ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Footer */}
@@ -251,6 +335,24 @@ const ThemeModal: React.FC<ThemeModalProps> = ({ isOpen, onClose }) => {
                 <span className="font-medium text-gray-900">
                   {currentMainContentBg.name}
                 </span>
+              </div>
+              <div className="pt-2 border-t border-gray-200 mt-2">
+                <div>
+                  Cache:{" "}
+                  <span className={`font-medium ${
+                    cacheEnabled ? 'text-blue-600' : 'text-gray-500'
+                  }`}>
+                    {cacheEnabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                </div>
+                <div>
+                  Data Source:{" "}
+                  <span className={`font-medium ${
+                    useMockData ? 'text-orange-600' : 'text-green-600'
+                  }`}>
+                    {useMockData ? 'Mock Data' : 'Real Data'}
+                  </span>
+                </div>
               </div>
             </div>
             <button
