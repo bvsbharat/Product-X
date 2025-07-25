@@ -16,33 +16,47 @@ import {
   getEvents,
   getWorkoutData,
   getPhotoMemories,
-  getEmails,
   WeatherData,
   Event,
   WorkoutData,
   PhotoMemory,
   Email,
 } from "../services/api";
+import { useEmails } from "../hooks/useEmails";
+import { useCalendarEvents } from "../hooks/useCalendarEvents";
 
 export default function Home() {
   const [weather, setWeather] = useState<WeatherData | null>(null);
-  const [events, setEvents] = useState<Event[]>([]);
+
   const [workout, setWorkout] = useState<WorkoutData | null>(null);
   const [photos, setPhotos] = useState<PhotoMemory[]>([]);
-  const [emails, setEmails] = useState<Email[]>([]);
+  const {
+    emails,
+    emailsLoading,
+    emailsError,
+    emailSource,
+    lastEmailRefresh,
+    refreshEmails,
+    loadEmailsWithCache,
+    getCacheStatus,
+    isCacheValid,
+  } = useEmails();
+
+  const {
+    events,
+    eventsLoading,
+    eventsError,
+    eventSource,
+    refreshEvents,
+    loadEventsWithCache,
+    getCacheStatus: getEventsCacheStatus,
+    isCacheValid: isEventsCacheValid,
+  } = useCalendarEvents();
+
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [expandedEmailId, setExpandedEmailId] = useState<string | null>(null);
-  const [emailsLoading, setEmailsLoading] = useState(false);
-  const [emailsError, setEmailsError] = useState<string | null>(null);
-  const [emailSource, setEmailSource] = useState<string | null>(null);
-  
-  // Events state
-  const [eventsLoading, setEventsLoading] = useState(false);
-  const [eventsError, setEventsError] = useState<string | null>(null);
-  const [eventSource, setEventSource] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   const photoImages = [
     "https://trae-api-us.mchost.guru/api/ide/v1/text_to_image?prompt=woman%20sitting%20on%20steps%20in%20front%20of%20modern%20architecture%20building%20with%20geometric%20patterns%20sunny%20day%20urban%20setting&image_size=square",
@@ -65,93 +79,41 @@ export default function Home() {
     setExpandedEmailId(null);
   };
 
-  const refreshEmails = useCallback(async () => {
+  const handleRefreshEmails = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      setEmailsLoading(true);
-      setEmailsError(null);
-      
-      console.log('🔄 Fetching emails from API...');
-      const emailsData = await getEmails();
-      
-      // Handle direct array response from API service
-      if (Array.isArray(emailsData)) {
-        setEmails(emailsData);
-        setEmailSource('API');
-        console.log(`📧 Loaded ${emailsData.length} emails from API source`);
-        setLastRefresh(new Date());
-      } else {
-        throw new Error('Invalid email data format');
-      }
-    } catch (error) {
-      console.error('❌ Failed to refresh emails:', error);
-      setEmailsError(error instanceof Error ? error.message : 'Failed to fetch emails');
-      setEmails([]);
-      setEmailSource(null);
+      await refreshEmails();
     } finally {
       setIsRefreshing(false);
-      setEmailsLoading(false);
     }
-  }, []);
-
-  const refreshEvents = async () => {
-    await fetchEvents();
-  };
-
-  const fetchEvents = async () => {
-    setEventsLoading(true);
-    setEventsError(null);
-    
-    try {
-      const eventsData = await getEvents();
-      
-      // Handle direct array response from API service
-      if (Array.isArray(eventsData)) {
-        setEvents(eventsData.slice(0, 3));
-        setEventSource('API');
-      } else {
-        throw new Error('Invalid events data format');
-      }
-    } catch (error) {
-      console.error('Error fetching events:', error);
-      setEventsError(error instanceof Error ? error.message : 'Failed to load events');
-    } finally {
-      setEventsLoading(false);
-    }
-  };
+  }, [refreshEmails]);
 
   const expandedEmail = emails.find((email) => email.id === expandedEmailId);
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [weatherData, workoutData, photosData] =
-          await Promise.all([
-            getWeatherData(),
-            getWorkoutData(),
-            getPhotoMemories(),
-          ]);
+        const [weatherData, workoutData, photosData] = await Promise.all([
+          getWeatherData(),
+          getWorkoutData(),
+          getPhotoMemories(),
+        ]);
         setWeather(weatherData);
         setWorkout(workoutData);
         setPhotos(photosData.slice(0, 1));
-        
-        // Load emails and events separately with error handling
-        await refreshEmails();
-        await fetchEvents();
+
+        // Load events and emails in parallel from cache
+        // Both are now loaded automatically from localStorage cache via their respective hooks
+        await Promise.all([loadEmailsWithCache(), loadEventsWithCache()]);
       } catch (error) {
-        console.error('Failed to load initial data:', error);
+        console.error("Failed to load initial data:", error);
       }
     };
 
     loadData();
 
-    // Auto-refresh emails every 5 minutes
-    const emailRefreshInterval = setInterval(refreshEmails, 5 * 60 * 1000);
-
-    return () => {
-      clearInterval(emailRefreshInterval);
-    };
-  }, [refreshEmails]);
+    // Note: Removed auto-refresh interval - emails now use cache and only refresh on user action
+  }, [loadEmailsWithCache, loadEventsWithCache]);
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -286,8 +248,18 @@ export default function Home() {
                       Today's Schedule
                     </div>
                     <div className="text-xs opacity-90 text-white">
-                      Next: {events.length > 0 ? events[0].title : "No events"}{" "}
-                      at {events.length > 0 ? events[0].time : ""}
+                      {events.length > 0 ? (
+                        <>
+                          Next:{" "}
+                          {events[0].title.length > 25
+                            ? `${events[0].title.substring(0, 25)}...`
+                            : events[0].title}
+                          {events[0].time &&
+                            ` at ${events[0].time.split(" - ")[0]}`}
+                        </>
+                      ) : (
+                        "No events scheduled"
+                      )}
                     </div>
                   </div>
                 </div>
@@ -318,34 +290,50 @@ export default function Home() {
 
                   {/* Event pointers */}
                   {events.map((event, index) => {
+                    // Parse time more robustly
                     const timeStr = event.time;
-                    const [time, period] = timeStr.split(" ");
-                    const [hours, minutes] = time.split(":").map(Number);
-                    let hour24 = hours;
-                    if (period === "PM" && hours !== 12) hour24 += 12;
-                    if (period === "AM" && hours === 12) hour24 = 0;
+                    let hour24 = 12; // Default to noon if parsing fails
+                    let minutes = 0;
+
+                    try {
+                      // Handle time ranges like "12:00 PM - 1:00 PM"
+                      const startTime = timeStr.includes(" - ")
+                        ? timeStr.split(" - ")[0]
+                        : timeStr;
+                      const timeParts = startTime.trim().split(" ");
+
+                      if (timeParts.length >= 2) {
+                        const [time, period] = timeParts;
+                        const [hours, mins] = time.split(":").map(Number);
+                        hour24 = hours;
+                        minutes = mins || 0;
+
+                        if (period === "PM" && hours !== 12) hour24 += 12;
+                        if (period === "AM" && hours === 12) hour24 = 0;
+                      }
+                    } catch (error) {
+                      console.warn("Error parsing event time:", timeStr, error);
+                    }
+
                     const position = ((hour24 + minutes / 60) / 24) * 100;
 
                     return (
                       <div
                         key={event.id}
                         className="absolute top-1/2 transform -translate-y-1/2 -translate-x-1/2 group cursor-pointer"
-                        style={{ left: `${position}%` }}
+                        style={{
+                          left: `${Math.min(Math.max(position, 2), 98)}%`,
+                        }}
                       >
-                        <div className="w-2.5 h-2.5 bg-white rounded-full border-2 border-blue-300 shadow-lg hover:scale-125 transition-transform duration-200"></div>
+                        <div className="w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-blue-300 shadow-lg hover:scale-125 transition-transform duration-200"></div>
                         <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-[100] pointer-events-none">
-                          <div className="bg-white rounded-lg px-3 py-2 text-xs text-gray-800 font-medium whitespace-nowrap shadow-xl border border-gray-200 min-w-max">
-                            <div className="font-semibold text-gray-900">
-                              {event.title}
+                          <div className="bg-white rounded-lg px-3 py-2 text-xs text-black font-medium whitespace-nowrap shadow-xl border border-gray-200 min-w-max max-w-xs">
+                            <div className="font-semibold text-black">
+                              {event.title || "Untitled Event"}
                             </div>
-                            <div className="text-xs text-gray-600">
-                              {event.time}
+                            <div className="text-xs text-black">
+                              {event.time || "Time TBD"}
                             </div>
-                            {event.description && (
-                              <div className="text-xs text-gray-500 mt-1">
-                                {event.description}
-                              </div>
-                            )}
                             <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-white"></div>
                           </div>
                         </div>
@@ -392,19 +380,59 @@ export default function Home() {
                 <div className="flex items-center space-x-2">
                   {emailSource && (
                     <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
-                      {emailSource === 'mcp' ? 'Live' : 'Demo'}
+                      {emailSource === "MCP Agent"
+                        ? "MCP"
+                        : emailSource === "API"
+                        ? "Live"
+                        : "Demo"}
                     </span>
                   )}
+                  {eventSource && (
+                    <span className="text-xs text-gray-400 bg-blue-100 px-2 py-1 rounded">
+                      Events:{" "}
+                      {eventSource === "MCP Agent"
+                        ? "MCP"
+                        : eventSource === "API"
+                        ? "Live"
+                        : "Demo"}
+                    </span>
+                  )}
+                  <span
+                    className={`text-xs px-2 py-1 rounded ${
+                      isCacheValid
+                        ? "text-green-600 bg-green-50"
+                        : "text-orange-600 bg-orange-50"
+                    }`}
+                  >
+                    Emails: {isCacheValid ? "Cached" : "Cache expired"}
+                  </span>
+                  <span
+                    className={`text-xs px-2 py-1 rounded ${
+                      isEventsCacheValid
+                        ? "text-green-600 bg-green-50"
+                        : "text-orange-600 bg-orange-50"
+                    }`}
+                  >
+                    Events: {isEventsCacheValid ? "Cached" : "Cache expired"}
+                  </span>
                   <span className="text-xs text-gray-500">
-                    Updated {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    Updated{" "}
+                    {lastEmailRefresh.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </span>
                   <button
-                    onClick={refreshEmails}
+                    onClick={handleRefreshEmails}
                     disabled={isRefreshing || emailsLoading}
                     className="p-1 text-gray-500 hover:text-gray-700 transition-colors duration-200 disabled:opacity-50"
-                    title="Refresh emails"
+                    title="Refresh emails from server"
                   >
-                    <RefreshCw className={`w-4 h-4 ${isRefreshing || emailsLoading ? 'animate-spin' : ''}`} />
+                    <RefreshCw
+                      className={`w-4 h-4 ${
+                        isRefreshing || emailsLoading ? "animate-spin" : ""
+                      }`}
+                    />
                   </button>
                 </div>
               </div>
@@ -421,10 +449,14 @@ export default function Home() {
                   <div className="flex items-center justify-center h-32 text-gray-500">
                     <div className="text-center">
                       <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50 text-red-500" />
-                      <p className="text-sm text-red-600">Failed to load emails</p>
-                      <p className="text-xs text-gray-500 mt-1">{emailsError}</p>
+                      <p className="text-sm text-red-600">
+                        Failed to load emails
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {emailsError}
+                      </p>
                       <button
-                        onClick={refreshEmails}
+                        onClick={handleRefreshEmails}
                         className="text-xs text-blue-500 hover:text-blue-700 mt-2"
                       >
                         Try again
@@ -437,7 +469,7 @@ export default function Home() {
                       <Mail className="w-8 h-8 mx-auto mb-2 opacity-50" />
                       <p className="text-sm">No emails found</p>
                       <button
-                        onClick={refreshEmails}
+                        onClick={handleRefreshEmails}
                         className="text-xs text-blue-500 hover:text-blue-700 mt-1"
                       >
                         Try refreshing
@@ -446,40 +478,40 @@ export default function Home() {
                   </div>
                 ) : (
                   emails.slice(0, 5).map((email) => (
-                     <div
-                       key={email.id}
-                       className="border-b border-gray-200 pb-3 last:border-b-0 cursor-pointer hover:bg-gray-50 rounded-lg p-2 -m-2 transition-colors duration-200"
-                       onClick={() => handleEmailClick(email.id)}
-                     >
-                       <div className="flex items-start justify-between">
-                         <div className="flex-1">
-                           <h4
-                             className={`text-sm font-medium ${
-                               email.isRead ? "text-gray-600" : "text-gray-900"
-                             }`}
-                           >
-                             {email.subject}
-                           </h4>
-                           <p className="text-xs text-gray-500 mt-1">
-                             {email.sender}
-                           </p>
-                           <p className="text-xs text-gray-600 mt-2 leading-relaxed">
-                             {email.summary}
-                           </p>
-                         </div>
-                         <div className="flex items-center ml-4">
-                           <span className="text-xs text-gray-500">
-                             {email.time}
-                           </span>
-                           {!email.isRead && (
-                             <div className="w-2 h-2 bg-blue-500 rounded-full ml-2"></div>
-                           )}
-                         </div>
-                       </div>
-                     </div>
-                   ))
-                 )}
-               </div>
+                    <div
+                      key={email.id}
+                      className="border-b border-gray-200 pb-3 last:border-b-0 cursor-pointer hover:bg-gray-50 rounded-lg p-2 -m-2 transition-colors duration-200"
+                      onClick={() => handleEmailClick(email.id)}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h4
+                            className={`text-sm font-medium ${
+                              email.isRead ? "text-gray-600" : "text-gray-900"
+                            }`}
+                          >
+                            {email.subject}
+                          </h4>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {email.sender}
+                          </p>
+                          <p className="text-xs text-gray-600 mt-2 leading-relaxed">
+                            {email.summary}
+                          </p>
+                        </div>
+                        <div className="flex items-center ml-4">
+                          <span className="text-xs text-gray-500">
+                            {email.time}
+                          </span>
+                          {!email.isRead && (
+                            <div className="w-2 h-2 bg-blue-500 rounded-full ml-2"></div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </>
           ) : (
             // Expanded Email View
@@ -543,7 +575,8 @@ export default function Home() {
         {/* Events Section */}
         <div>
           <p className="text-gray-600 text-xs mb-3 leading-relaxed">
-            You have <span className="text-blue-500">{events.length} events</span> today.
+            You have{" "}
+            <span className="text-blue-500">{events.length} events</span> today.
           </p>
 
           <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 shadow-lg h-64 flex flex-col">
@@ -557,7 +590,7 @@ export default function Home() {
               <div className="flex items-center space-x-2">
                 {eventSource && (
                   <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
-                    {eventSource === 'mcp' ? 'Live' : 'Demo'}
+                    {eventSource} • {getEventsCacheStatus()}
                   </span>
                 )}
                 <button
@@ -566,7 +599,9 @@ export default function Home() {
                   className="p-1 text-gray-500 hover:text-gray-700 transition-colors duration-200 disabled:opacity-50"
                   title="Refresh events"
                 >
-                  <RefreshCw className={`w-4 h-4 ${eventsLoading ? 'animate-spin' : ''}`} />
+                  <RefreshCw
+                    className={`w-4 h-4 ${eventsLoading ? "animate-spin" : ""}`}
+                  />
                 </button>
               </div>
             </div>
@@ -583,7 +618,9 @@ export default function Home() {
                 <div className="flex items-center justify-center h-32 text-gray-500">
                   <div className="text-center">
                     <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50 text-red-500" />
-                    <p className="text-sm text-red-600">Failed to load events</p>
+                    <p className="text-sm text-red-600">
+                      Failed to load events
+                    </p>
                     <p className="text-xs text-gray-500 mt-1">{eventsError}</p>
                     <button
                       onClick={refreshEvents}
@@ -601,24 +638,97 @@ export default function Home() {
                   </div>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {events.map((event) => (
-                    <div key={event.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
-                      <div className="flex items-center">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full mr-4"></div>
-                        <div>
-                          <div className="text-sm font-semibold text-gray-900">
-                            {event.time}
+                <div className="space-y-4">
+                  {/* Summary Stats */}
+                  <div className="grid grid-cols-2 gap-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600">
+                        {events.length}
+                      </div>
+                      <div className="text-xs text-gray-600">Total Events</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-purple-600">
+                        {events.filter((e) => e.time?.includes("PM")).length}
+                      </div>
+                      <div className="text-xs text-gray-600">PM Events</div>
+                    </div>
+                  </div>
+
+                  {/* Events List */}
+                  <div className="space-y-3">
+                    {events.map((event) => (
+                      <div
+                        key={event.id}
+                        className="flex items-center p-4 bg-white rounded-lg hover:bg-gray-50 transition-colors border border-gray-200 shadow-sm"
+                      >
+                        <div className="flex-shrink-0 w-28 text-sm font-medium">
+                          <div className="text-blue-600 font-semibold">
+                            {event.time?.split(" - ")[0] || "TBD"}
                           </div>
-                          <div className="text-xs text-gray-600">{event.title}</div>
-                          {event.description && (
-                            <div className="text-xs text-gray-500 mt-1">{event.description}</div>
+                          {event.time?.includes(" - ") && (
+                            <div className="text-xs text-gray-500">
+                              to {event.time.split(" - ")[1]}
+                            </div>
                           )}
                         </div>
+                        <div className="flex-1 ml-4">
+                          <div className="font-semibold text-gray-900 text-base">
+                            {event.title}
+                          </div>
+                        </div>
+                        <div className="flex-shrink-0">
+                          <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                        </div>
                       </div>
-                      <div className="text-xs text-gray-500">{event.duration || '1h'}</div>
+                    ))}
+                  </div>
+
+                  {/* Schedule Overview */}
+                  <div className="mt-6 p-4 bg-gradient-to-r from-gray-50 to-blue-50 rounded-lg border border-gray-200">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-2">
+                      📊 Schedule Overview
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-600">
+                          Morning (6AM-12PM):
+                        </span>
+                        <span className="ml-2 font-medium">
+                          {
+                            events.filter((e) => {
+                              const time = e.time?.split(" - ")[0];
+                              if (!time) return false;
+                              const hour = parseInt(time.split(":")[0]);
+                              const period = time.includes("AM") ? "AM" : "PM";
+                              return (
+                                period === "AM" ||
+                                (period === "PM" && hour === 12)
+                              );
+                            }).length
+                          }{" "}
+                          events
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">
+                          Afternoon/Evening:
+                        </span>
+                        <span className="ml-2 font-medium">
+                          {
+                            events.filter((e) => {
+                              const time = e.time?.split(" - ")[0];
+                              if (!time) return false;
+                              const hour = parseInt(time.split(":")[0]);
+                              const period = time.includes("PM") ? "PM" : "AM";
+                              return period === "PM" && hour !== 12;
+                            }).length
+                          }{" "}
+                          events
+                        </span>
+                      </div>
                     </div>
-                  ))}
+                  </div>
                 </div>
               )}
             </div>

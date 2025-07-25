@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Calendar, Plus, MapPin, Clock, Filter, Search } from 'lucide-react';
-import { getEvents, Event } from '../services/api';
+import { ArrowLeft, Calendar, Plus, MapPin, Clock, Filter, Search, RefreshCw } from 'lucide-react';
+import { Event } from '../services/api';
+import { useCalendarEvents } from '../hooks/useCalendarEvents';
+import { useStore } from '../store/useStore';
 
 type EventCategory = 'meeting' | 'personal' | 'fitness' | 'social';
 
@@ -15,7 +17,18 @@ interface NewEvent {
 }
 
 export default function Events() {
-  const [events, setEvents] = useState<Event[]>([]);
+  const {
+    events,
+    eventsLoading,
+    eventsError,
+    eventSource,
+    refreshEvents,
+    loadEventsWithCache,
+    getCacheStatus,
+  } = useCalendarEvents();
+  
+  const { addEvent } = useStore();
+  
   const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<EventCategory | 'all'>('all');
@@ -30,13 +43,12 @@ export default function Events() {
   });
 
   useEffect(() => {
-    const loadEvents = async () => {
-      const eventsData = await getEvents();
-      setEvents(eventsData);
-      setFilteredEvents(eventsData);
-    };
-    loadEvents();
-  }, []);
+    loadEventsWithCache();
+  }, [loadEventsWithCache]);
+
+  const handleRefreshEvents = async () => {
+    await refreshEvents();
+  };
 
   useEffect(() => {
     let filtered = events;
@@ -90,7 +102,7 @@ export default function Events() {
       description: newEvent.description || undefined
     };
 
-    setEvents([...events, createdEvent]);
+    addEvent(createdEvent);
     setNewEvent({
       title: '',
       date: '',
@@ -100,6 +112,8 @@ export default function Events() {
       description: ''
     });
     setShowCreateForm(false);
+    // Refresh events to show the updated list
+    handleRefreshEvents();
   };
 
   const formatEventDate = (dateString: string) => {
@@ -139,14 +153,29 @@ export default function Events() {
               <ArrowLeft className="w-6 h-6 text-gray-600 hover:text-gray-800" />
             </Link>
             <h1 className="text-2xl font-bold text-gray-800">Events</h1>
+            {eventSource && (
+              <span className="ml-3 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
+                {eventSource} • {getCacheStatus()}
+              </span>
+            )}
           </div>
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center hover:bg-blue-600 transition-colors"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Event
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handleRefreshEvents}
+              disabled={eventsLoading}
+              className="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg flex items-center hover:bg-gray-200 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${eventsLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center hover:bg-blue-600 transition-colors"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Event
+            </button>
+          </div>
         </div>
 
         {/* Search and Filter */}
@@ -189,7 +218,18 @@ export default function Events() {
             Upcoming Events ({filteredEvents.length})
           </h2>
           
-          {filteredEvents.length > 0 ? (
+          {eventsError && (
+            <div className="mb-4 p-3 bg-red-100 border border-red-300 text-red-700 rounded-lg">
+              Error loading events: {eventsError}
+            </div>
+          )}
+          
+          {eventsLoading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+              <p className="text-gray-500">Loading events...</p>
+            </div>
+          ) : filteredEvents.length > 0 ? (
             <div className="space-y-4">
               {filteredEvents.map((event) => (
                 <div key={event.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
@@ -304,7 +344,8 @@ export default function Events() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
                     <option value="personal">Personal</option>
-                    <option value="work">Work</option>
+                    <option value="meeting">Meeting</option>
+                    <option value="fitness">Fitness</option>
                     <option value="social">Social</option>
                   </select>
                 </div>

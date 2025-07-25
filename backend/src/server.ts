@@ -16,6 +16,8 @@ const PORT = process.env.PORT || 3002;
 // Global MCP instances
 let mcpClient: MCPClient | null = null;
 let mcpAgent: MCPAgent | null = null;
+let calendarMcpClient: MCPClient | null = null;
+let calendarMcpAgent: MCPAgent | null = null;
 
 // Middleware
 app.use(cors({
@@ -32,7 +34,7 @@ app.use((req, res, next) => {
 });
 
 // Initialize MCP with Composio mail service
-async function initializeMCP() {
+async function initializeMailMCP() {
   try {
     console.log('🔄 Initializing MCP with Composio mail service...');
     
@@ -42,10 +44,10 @@ async function initializeMCP() {
       return null;
     }
     
-    // Configure MCP client with unified Composio server (includes both mail and calendar)
+    // Configure MCP client for Gmail
     const mcpConfig = {
       mcpServers: {
-        composio_unified: {
+        composio_gmail: {
           command: 'npx',
           args: [
             '@composio/mcp@latest',
@@ -62,7 +64,7 @@ async function initializeMCP() {
     
     // Initialize MCP client
     mcpClient = MCPClient.fromDict(mcpConfig);
-    console.log('✅ MCP Client initialized');
+    console.log('✅ Mail MCP Client initialized');
     
     // Initialize LLM (Anthropic)
     const llm = new ChatAnthropic({
@@ -70,7 +72,7 @@ async function initializeMCP() {
       apiKey: process.env.ANTHROPIC_API_KEY,
       temperature: 0.1
     });
-    console.log('✅ Anthropic LLM initialized');
+    console.log('✅ Anthropic LLM initialized for mail');
     
     // Initialize MCP agent
     mcpAgent = new MCPAgent({
@@ -83,21 +85,21 @@ async function initializeMCP() {
     app.locals.mcpClient = mcpClient;
     app.locals.mcpAgent = mcpAgent;
     
-    console.log('✅ MCP Agent initialized successfully');
+    console.log('✅ Mail MCP Agent initialized successfully');
     
     // Test the connection
     try {
-      const testResponse = await mcpAgent.run('List available tools and capabilities');
-      console.log('🧪 MCP Test Response:', testResponse);
+      const testResponse = await mcpAgent.run('List available mail tools and capabilities');
+      console.log('🧪 Mail MCP Test Response:', testResponse);
     } catch (testError) {
-      console.warn('⚠️ MCP test failed, but agent is initialized:', testError);
+      console.warn('⚠️ Mail MCP test failed, but agent is initialized:', testError);
     }
     
     return mcpAgent;
     
   } catch (error) {
-    console.error('❌ Failed to initialize MCP:', error);
-    console.log('📋 Falling back to mock data only');
+    console.error('❌ Failed to initialize Mail MCP:', error);
+    console.log('📋 Falling back to mock mail data only');
     
     // Set to null to trigger fallback in routes
     mcpClient = null;
@@ -107,6 +109,104 @@ async function initializeMCP() {
     
     return null;
   }
+}
+
+// Initialize MCP with Composio calendar service
+async function initializeCalendarMCP() {
+  try {
+    console.log('📅 Initializing MCP with Composio calendar service...');
+    
+    // Check for required environment variables
+    if (!process.env.ANTHROPIC_API_KEY) {
+      console.warn('⚠️ ANTHROPIC_API_KEY not found, falling back to mock calendar data');
+      return null;
+    }
+    
+    // Configure MCP client for Calendar
+    const calendarMcpConfig = {
+      mcpServers: {
+        composio_calendar: {
+          command: 'npx',
+          args: [
+            '@composio/mcp@latest',
+            'start',
+            '--url',
+            'https://mcp.composio.dev/composio/server/7478b12a-7327-41a6-af9c-cfe84cae7c66/mcp?include_composio_helper_actions=true'
+          ],
+          env: {
+            npm_config_yes: 'true'
+          }
+        }
+      }
+    };
+    
+    // Initialize Calendar MCP client
+    calendarMcpClient = MCPClient.fromDict(calendarMcpConfig);
+    console.log('✅ Calendar MCP Client initialized');
+    
+    // Initialize LLM (Anthropic) for calendar
+    const calendarLlm = new ChatAnthropic({
+      model: 'claude-sonnet-4-20250514',
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      temperature: 0.1
+    });
+    console.log('✅ Anthropic LLM initialized for calendar');
+    
+    // Initialize Calendar MCP agent
+    calendarMcpAgent = new MCPAgent({
+      llm: calendarLlm,
+      client: calendarMcpClient,
+      maxSteps: 10
+    });
+    
+    // Make Calendar MCP instances available to routes
+    app.locals.calendarMcpClient = calendarMcpClient;
+    app.locals.calendarMcpAgent = calendarMcpAgent;
+    
+    console.log('✅ Calendar MCP Agent initialized successfully');
+    
+    // Test the calendar connection
+    try {
+      const testResponse = await calendarMcpAgent.run('List available calendar tools and capabilities');
+      console.log('🧪 Calendar MCP Test Response:', testResponse);
+    } catch (testError) {
+      console.warn('⚠️ Calendar MCP test failed, but agent is initialized:', testError);
+    }
+    
+    return calendarMcpAgent;
+    
+  } catch (error) {
+    console.error('❌ Failed to initialize Calendar MCP:', error);
+    console.log('📋 Falling back to mock calendar data only');
+    
+    // Set to null to trigger fallback in routes
+    calendarMcpClient = null;
+    calendarMcpAgent = null;
+    app.locals.calendarMcpClient = null;
+    app.locals.calendarMcpAgent = null;
+    
+    return null;
+  }
+}
+
+// Initialize both MCP services
+async function initializeMCP() {
+  console.log('🚀 Initializing all MCP services...');
+  
+  // Initialize both mail and calendar MCP services in parallel
+  const [mailAgent, calendarAgent] = await Promise.allSettled([
+    initializeMailMCP(),
+    initializeCalendarMCP()
+  ]);
+  
+  console.log('📊 MCP Initialization Summary:');
+  console.log(`  📧 Mail MCP: ${mailAgent.status === 'fulfilled' && mailAgent.value ? 'Connected' : 'Failed/Fallback'}`);
+  console.log(`  📅 Calendar MCP: ${calendarAgent.status === 'fulfilled' && calendarAgent.value ? 'Connected' : 'Failed/Fallback'}`);
+  
+  return {
+    mailAgent: mailAgent.status === 'fulfilled' ? mailAgent.value : null,
+    calendarAgent: calendarAgent.status === 'fulfilled' ? calendarAgent.value : null
+  };
 }
 
 // Routes
@@ -119,7 +219,10 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     timestamp: new Date().toISOString(),
-    mcpStatus: mcpAgent ? 'connected' : 'disconnected'
+    mcpStatus: {
+      mail: mcpAgent ? 'connected' : 'disconnected',
+      calendar: calendarMcpAgent ? 'connected' : 'disconnected'
+    }
   });
 });
 
@@ -156,7 +259,9 @@ async function startServer() {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
       console.log(`🔗 CORS enabled for: ${process.env.CORS_ORIGIN || 'http://localhost:5173'}`);
-      console.log(`🤖 MCP Status: ${mcpAgent ? 'Connected' : 'Fallback Mode'}`);
+      console.log(`🤖 MCP Status:`);
+      console.log(`  📧 Mail: ${mcpAgent ? 'Connected' : 'Fallback Mode'}`);
+      console.log(`  📅 Calendar: ${calendarMcpAgent ? 'Connected' : 'Fallback Mode'}`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);

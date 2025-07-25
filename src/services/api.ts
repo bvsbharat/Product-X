@@ -156,7 +156,18 @@ const mockEmails: Email[] = [
 
 // Events API
 export const getEvents = async (): Promise<Event[]> => {
-  return apiRequest<Event[]>('/events', undefined, mockEvents);
+  try {
+    // Try backend API first
+    const response = await fetch(`${API_BASE_URL}/events`);
+    if (response.ok) {
+      const data = await response.json();
+      return data.data || data;
+    }
+    throw new Error('Backend API failed');
+  } catch (error) {
+    console.warn('Backend API failed, using mock data:', error);
+    return mockEvents;
+  }
 };
 
 export const createEvent = async (event: Omit<Event, 'id'>): Promise<Event> => {
