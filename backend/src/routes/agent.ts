@@ -1,10 +1,13 @@
 import express from 'express';
 import { MCPAgent } from 'mcp-use';
+import { cacheMiddleware, cacheResponse, getCacheStats, invalidateCache } from '../middleware/cache.js';
+import { CacheCleanupService } from '../services/cacheCleanup.js';
+import { isDatabaseConnected } from '../config/database.js';
 
 const router = express.Router();
 
 // Test MCP agent endpoint
-router.post('/test', async (req: express.Request, res: express.Response) => {
+router.post('/test', cacheMiddleware('agent_test'), async (req: express.Request, res: express.Response) => {
   try {
     const mcpAgent = req.app.locals.mcpAgent as MCPAgent;
     const { query } = req.body;
@@ -33,7 +36,7 @@ router.post('/test', async (req: express.Request, res: express.Response) => {
     
     console.log(`✅ MCP agent response received in ${duration}ms`);
     
-    res.json({
+    const result = {
       success: true,
       data: {
         query,
@@ -42,7 +45,14 @@ router.post('/test', async (req: express.Request, res: express.Response) => {
         timestamp: new Date().toISOString()
       },
       message: 'MCP agent query executed successfully'
-    });
+    };
+    
+    // Cache the response if database is connected
+     if (isDatabaseConnected()) {
+       await cacheResponse(req, res, result);
+     }
+    
+    res.json(result);
     
   } catch (error) {
     console.error('❌ MCP agent test failed:', error);
@@ -82,7 +92,7 @@ router.get('/status', async (req: express.Request, res: express.Response) => {
 });
 
 // List available tools
-router.get('/tools', async (req: express.Request, res: express.Response) => {
+router.get('/tools', cacheMiddleware('agent_tools'), async (req: express.Request, res: express.Response) => {
   try {
     const mcpAgent = req.app.locals.mcpAgent as MCPAgent;
     
@@ -98,14 +108,21 @@ router.get('/tools', async (req: express.Request, res: express.Response) => {
     
     const toolsResponse = await mcpAgent.run('List all available tools and their descriptions');
     
-    res.json({
+    const result = {
       success: true,
       data: {
         tools: toolsResponse,
         timestamp: new Date().toISOString()
       },
       message: 'Available tools retrieved successfully'
-    });
+    };
+    
+    // Cache the response if database is connected
+     if (isDatabaseConnected()) {
+       await cacheResponse(req, res, result);
+     }
+    
+    res.json(result);
     
   } catch (error) {
     console.error('❌ Error fetching tools:', error);
@@ -118,7 +135,7 @@ router.get('/tools', async (req: express.Request, res: express.Response) => {
 });
 
 // Generate summary from email and calendar data
-router.post('/summary', async (req: express.Request, res: express.Response) => {
+router.post('/summary', cacheMiddleware('agent_summary'), async (req: express.Request, res: express.Response) => {
   try {
     const mcpAgent = req.app.locals.mcpAgent as MCPAgent;
     const { emails, events } = req.body;
@@ -166,7 +183,7 @@ Write only the summary paragraph, nothing else.`;
     
     console.log(`✅ Summary generated in ${duration}ms`);
     
-    res.json({
+    const result = {
       success: true,
       data: {
         summary: response,
@@ -174,7 +191,14 @@ Write only the summary paragraph, nothing else.`;
         timestamp: new Date().toISOString()
       },
       message: 'Summary generated successfully'
-    });
+    };
+    
+    // Cache the response if database is connected
+     if (isDatabaseConnected()) {
+       await cacheResponse(req, res, result);
+     }
+    
+    res.json(result);
     
   } catch (error) {
     console.error('❌ Summary generation failed:', error);
@@ -190,6 +214,104 @@ Write only the summary paragraph, nothing else.`;
         timestamp: new Date().toISOString()
       },
       message: 'Using fallback summary due to LLM unavailability'
+    });
+   }
+});
+
+// Cache management endpoints
+
+// Get cache statistics
+router.get('/cache/stats', async (req, res) => {
+  try {
+    if (!isDatabaseConnected()) {
+      return res.json({
+        success: false,
+        message: 'Database not connected',
+        data: { total: 0, byType: {}, expired: 0 }
+      });
+    }
+
+    await getCacheStats(req, res);
+  } catch (error) {
+    console.error('❌ Cache stats error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get cache statistics',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Clear cache by type
+router.delete('/cache/:type', async (req, res) => {
+  try {
+    const { type } = req.params;
+    
+    const validTypes = ['agent_response', 'agent_test', 'agent_tools', 'agent_summary', 'emails', 'events', 'summary', 'all'];
+    
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid cache type',
+        message: `Valid types are: ${validTypes.join(', ')}`
+      });
+    }
+
+    await invalidateCache(type as any);
+    
+    res.json({
+      success: true,
+      message: `Cache cleared for type: ${type}`,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Cache clear error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to clear cache',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Force cache cleanup
+router.post('/cache/cleanup', async (req, res) => {
+  try {
+    const result = await CacheCleanupService.forceCleanup();
+    
+    res.json({
+      success: true,
+      data: result,
+      message: 'Cache cleanup completed',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Cache cleanup error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to cleanup cache',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get cache cleanup service status
+router.get('/cache/cleanup/status', async (req, res) => {
+  try {
+    const status = CacheCleanupService.getStatus();
+    
+    res.json({
+      success: true,
+      data: status,
+      message: 'Cache cleanup status retrieved',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Cache cleanup status error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get cleanup status',
+      message: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });

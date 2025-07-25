@@ -96,7 +96,7 @@ export const useStore = create<AppState>((set) => ({
   
   // Cache settings initial state
   cacheEnabled: true,
-  useMockData: false,
+  useMockData: false, // Ensure real data is fetched by default
   
   // Weather actions
   setWeather: (weather) => set({ weather }),

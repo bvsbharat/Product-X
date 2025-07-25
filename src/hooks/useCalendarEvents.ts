@@ -105,7 +105,7 @@ export const useCalendarEvents = () => {
         // Try to fetch from MCP agent first, then fallback to regular API
         try {
           // Attempt to fetch from MCP agent
-          const response = await fetch('http://localhost:3000/mcp/calendar', {
+          const response = await fetch('http://localhost:8080/mcp/calendar', {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
@@ -147,8 +147,13 @@ export const useCalendarEvents = () => {
   }, [fetchEventsFromAPI]);
 
   const loadEventsWithCache = useCallback(async (): Promise<Event[]> => {
-    // If cache is disabled or mock data is forced, always fetch fresh data
-    if (!cacheEnabled || useMockData) {
+    // If mock data is forced, always fetch mock data
+    if (useMockData) {
+      return fetchEventsFromAPI();
+    }
+    
+    // If cache is disabled, always fetch fresh data
+    if (!cacheEnabled) {
       return fetchEventsFromAPI();
     }
     
@@ -157,7 +162,7 @@ export const useCalendarEvents = () => {
       return events;
     }
     
-    // If no valid cache, fetch from API
+    // If no valid cache, fetch fresh data from server
     return fetchEventsFromAPI();
   }, [cacheEnabled, useMockData, events, eventsCacheTimestamp, isCacheValid, fetchEventsFromAPI]);
 

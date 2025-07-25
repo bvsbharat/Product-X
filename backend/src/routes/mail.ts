@@ -1,5 +1,6 @@
 import express from 'express';
 import { MCPAgent } from 'mcp-use';
+import { CacheService } from '../models/Cache.js';
 
 const router = express.Router();
 
@@ -24,9 +25,25 @@ export interface Email {
 
 // Removed unread count parsing function - using simplified agent approach
 
-// Get emails with simplified MCP agent integration
+// Get emails with simplified MCP agent integration and MongoDB caching
 router.get('/', async (req: express.Request, res: express.Response) => {
   try {
+    // Generate cache key for emails
+    const cacheKey = CacheService.generateKey('emails', 'gmail', 'latest_5');
+    
+    // Check cache first
+    const cachedEmails = await CacheService.get(cacheKey);
+    if (cachedEmails) {
+      console.log('🎯 Returning cached emails');
+      return res.json({
+        success: true,
+        data: cachedEmails,
+        source: 'MongoDB Cache',
+        timestamp: new Date().toISOString(),
+        message: 'Emails retrieved from cache'
+      });
+    }
+    
     const mcpAgent = req.app.locals.mcpAgent as MCPAgent;
     
     if (!mcpAgent) {
@@ -111,6 +128,13 @@ Filter out promotional, marketing, and spam emails. Only return important person
       });
     }
     
+    // Cache the successful MCP response for 3 minutes
+    await CacheService.set(cacheKey, emails, 'emails', 180, {
+      source: 'Gmail MCP',
+      query: 'latest_5_emails',
+      emailCount: emails.length
+    });
+    
     res.json({
       success: true,
       data: emails,
@@ -130,9 +154,24 @@ Filter out promotional, marketing, and spam emails. Only return important person
   }
 });
 
-// Get unread emails count
+// Get unread emails count with caching
 router.get('/unread-count', async (req: express.Request, res: express.Response) => {
   try {
+    // Generate cache key for unread count
+    const cacheKey = CacheService.generateKey('emails', 'gmail', 'unread_count');
+    
+    // Check cache first
+    const cachedCount = await CacheService.get(cacheKey);
+    if (cachedCount !== null) {
+      console.log('🎯 Returning cached unread count');
+      return res.json({
+        success: true,
+        data: { unreadCount: cachedCount },
+        source: 'MongoDB Cache',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
     const mcpAgent = req.app.locals.mcpAgent as MCPAgent;
     
     if (!mcpAgent) {
@@ -153,6 +192,12 @@ router.get('/unread-count', async (req: express.Request, res: express.Response) 
         unreadCount = parseInt(numberMatch[0], 10);
       }
     }
+    
+    // Cache the unread count for 2 minutes
+    await CacheService.set(cacheKey, unreadCount, 'emails', 120, {
+      source: 'Gmail MCP',
+      query: 'unread_count'
+    });
     
     res.json({
       success: true,

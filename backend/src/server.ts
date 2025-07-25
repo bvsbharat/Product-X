@@ -3,6 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { MCPClient, MCPAgent } from 'mcp-use';
 import { ChatAnthropic } from '@langchain/anthropic';
+import { connectDatabase, disconnectDatabase } from './config/database.js';
+import { CacheCleanupService } from './services/cacheCleanup.js';
 import mailRoutes from './routes/mail.js';
 import eventsRoutes from './routes/events.js';
 import agentRoutes from './routes/agent.js';
@@ -11,7 +13,7 @@ import agentRoutes from './routes/agent.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3002;
+const PORT = process.env.PORT || 8080;
 
 // Global MCP instances
 let mcpClient: MCPClient | null = null;
@@ -252,22 +254,76 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // Start server
 async function startServer() {
   try {
-    // Initialize MCP first
-    await initializeMCP();
+    console.log('🚀 Starting Weekend Dashboard Backend...');
     
+    // Initialize database connection
+    await connectDatabase();
+    
+    // Start cache cleanup service
+    CacheCleanupService.start();
+    
+    // Start HTTP server immediately
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
       console.log(`🔗 CORS enabled for: ${process.env.CORS_ORIGIN || 'http://localhost:5173'}`);
+      console.log(`💾 Database: ${process.env.MONGODB_URI ? 'Connected' : 'Not configured'}`);
+      console.log(`🧹 Cache cleanup: Active`);
+      console.log('✅ HTTP server started successfully!');
+    });
+    
+    // Initialize MCP services in background (non-blocking)
+    initializeMCP().then(() => {
       console.log(`🤖 MCP Status:`);
       console.log(`  📧 Mail: ${mcpAgent ? 'Connected' : 'Fallback Mode'}`);
       console.log(`  📅 Calendar: ${calendarMcpAgent ? 'Connected' : 'Fallback Mode'}`);
+      console.log('✅ All MCP services initialized!');
+    }).catch((error) => {
+      console.warn('⚠️ MCP initialization failed, using fallback mode:', error);
     });
+    
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);
   }
 }
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('\n🛑 Received SIGINT, shutting down gracefully...');
+  
+  try {
+    // Stop cache cleanup service
+    CacheCleanupService.stop();
+    
+    // Disconnect from database
+    await disconnectDatabase();
+    
+    console.log('✅ Graceful shutdown completed');
+    process.exit(0);
+  } catch (error) {
+    console.error('❌ Error during shutdown:', error);
+    process.exit(1);
+  }
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\n🛑 Received SIGTERM, shutting down gracefully...');
+  
+  try {
+    // Stop cache cleanup service
+    CacheCleanupService.stop();
+    
+    // Disconnect from database
+    await disconnectDatabase();
+    
+    console.log('✅ Graceful shutdown completed');
+    process.exit(0);
+  } catch (error) {
+    console.error('❌ Error during shutdown:', error);
+    process.exit(1);
+  }
+});
 
 startServer();
 

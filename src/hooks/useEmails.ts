@@ -145,11 +145,10 @@ export const useEmails = () => {
       return emails;
     }
     
-    // Don't automatically fetch from API on browser refresh
-    // Only fetch if explicitly requested or no cache exists
-    console.log('📧 No valid cache found, but not auto-fetching on page load');
-    return emails;
-  }, [emails, isCacheValid]);
+    // If no valid cache exists, fetch fresh data from server
+    console.log('📧 No valid cache found, fetching fresh data from server');
+    return await fetchEmailsFromAPI(false);
+  }, [emails, isCacheValid, fetchEmailsFromAPI]);
 
   const getCacheStatus = useCallback(() => {
     if (!emailsCacheTimestamp) return 'No cache';

@@ -1,4 +1,5 @@
 import express from 'express';
+import { CacheService } from '../models/Cache.js';
 
 const router = express.Router();
 
@@ -12,10 +13,26 @@ export interface Event {
   date?: string;
 }
 
-// Get events with MCP calendar integration
+// Get events with MCP calendar integration and MongoDB caching
 router.get('/', async (req: express.Request, res: express.Response) => {
   try {
     console.log('📅 Fetching calendar events...');
+    
+    // Generate cache key for events
+    const cacheKey = CacheService.generateKey('events', 'calendar', 'today_tomorrow');
+    
+    // Check cache first
+    const cachedEvents = await CacheService.get(cacheKey);
+    if (cachedEvents) {
+      console.log('🎯 Returning cached calendar events');
+      return res.json({
+        success: true,
+        data: cachedEvents,
+        source: 'MongoDB Cache',
+        timestamp: new Date().toISOString(),
+        message: 'Calendar events retrieved from cache'
+      });
+    }
     
     const calendarMcpAgent = req.app.locals.calendarMcpAgent;
     let events: Event[] = [];
@@ -42,6 +59,13 @@ router.get('/', async (req: express.Request, res: express.Response) => {
             source = 'Calendar MCP Agent';
             message = 'Calendar events fetched via Calendar MCP';
             console.log('✅ Successfully parsed MCP calendar events:', events.length);
+            
+            // Cache the successful MCP response for 5 minutes
+            await CacheService.set(cacheKey, events, 'events', 300, {
+              source: 'Calendar MCP',
+              query: 'today_tomorrow_events',
+              eventCount: events.length
+            });
           } else {
             throw new Error('No events found in MCP response');
           }
@@ -134,46 +158,97 @@ function parseMCPCalendarResponse(response: string): Event[] {
   try {
     console.log('📅 Raw MCP Response:', response);
     
+    // Handle case where response indicates no calendar tools available
+    if (response.includes('calendar functionality') || 
+        response.includes('calendar tools') || 
+        response.includes('Google Calendar tools')) {
+      console.log('📅 MCP indicates calendar tools not available');
+      return [];
+    }
+    
     // Try to extract structured data from markdown table format
     if (response.includes('|') && response.includes('ID') && response.includes('Title')) {
       return parseMarkdownTableFormat(response);
     }
     
-    // Try to extract JSON from the response
-    const jsonMatch = response.match(/\[.*\]/s);
+    // Try to extract JSON from the response with better error handling
+    const jsonMatch = response.match(/\[.*?\]/s);
     if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return parsed.map((event: any, index: number) => ({
-        id: event.id || `mcp-${index + 1}`,
-        title: event.title || event.summary || 'Untitled Event',
-        time: formatEventTime(event.time || event.start || 'Time TBD'),
-        date: new Date().toISOString().split('T')[0]
-      }));
+      try {
+        const jsonString = jsonMatch[0];
+        console.log('📅 Attempting to parse JSON:', jsonString);
+        const parsed = JSON.parse(jsonString);
+        
+        if (Array.isArray(parsed)) {
+          return parsed.map((event: any, index: number) => ({
+            id: event.id || `mcp-${index + 1}`,
+            title: event.title || event.summary || 'Untitled Event',
+            time: formatEventTime(event.time || event.start || 'Time TBD'),
+            date: new Date().toISOString().split('T')[0]
+          }));
+        }
+      } catch (jsonError) {
+        console.warn('📅 JSON parsing failed:', jsonError);
+        // Continue to text parsing
+      }
     }
     
-    // If no JSON found, try to parse text format
-    const lines = response.split('\n').filter(line => line.trim());
-    const events: Event[] = [];
+    // Try to extract events from structured text patterns
+    const events = parseTextualResponse(response);
+    if (events.length > 0) {
+      return events;
+    }
     
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (line.includes(':') && (line.toLowerCase().includes('meeting') || 
-          line.toLowerCase().includes('event') || 
-          line.toLowerCase().includes('appointment'))) {
+    // If no structured data found, return empty array
+    console.log('📅 No parseable calendar events found in response');
+    return [];
+    
+  } catch (error) {
+    console.error('Error parsing MCP calendar response:', error);
+    return [];
+  }
+}
+
+// Helper function to parse textual responses
+function parseTextualResponse(response: string): Event[] {
+  const events: Event[] = [];
+  const lines = response.split('\n').filter(line => line.trim());
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // Look for patterns like "Event: Title at Time" or "Title - Time"
+    if (line.includes(':') && (line.toLowerCase().includes('meeting') || 
+        line.toLowerCase().includes('event') || 
+        line.toLowerCase().includes('appointment') ||
+        line.toLowerCase().includes('call') ||
+        line.toLowerCase().includes('lunch') ||
+        line.toLowerCase().includes('dinner'))) {
+      
+      const parts = line.split(':');
+      if (parts.length >= 2) {
         events.push({
           id: `mcp-text-${i + 1}`,
-          title: line.split(':')[0].trim(),
-          time: formatEventTime(line.split(':')[1]?.trim() || 'Time TBD'),
+          title: parts[0].trim(),
+          time: formatEventTime(parts[1]?.trim() || 'Time TBD'),
           date: new Date().toISOString().split('T')[0]
         });
       }
     }
     
-    return events;
-  } catch (error) {
-    console.error('Error parsing MCP calendar response:', error);
-    return [];
+    // Look for bullet points or numbered lists
+    const bulletMatch = line.match(/^[\-\*\d+\.\)\s]*(.+?)\s+(?:at|from|@)\s+(.+)$/i);
+    if (bulletMatch) {
+      events.push({
+        id: `mcp-bullet-${i + 1}`,
+        title: bulletMatch[1].trim(),
+        time: formatEventTime(bulletMatch[2].trim()),
+        date: new Date().toISOString().split('T')[0]
+      });
+    }
   }
+  
+  return events;
 }
 
 // Helper function to parse markdown table format

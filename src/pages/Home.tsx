@@ -25,6 +25,7 @@ import {
 } from "../services/api";
 import { useEmails } from "../hooks/useEmails";
 import { useCalendarEvents } from "../hooks/useCalendarEvents";
+import { formatEmailTime } from "../utils/timeFormat";
 
 export default function Home() {
   const [weather, setWeather] = useState<WeatherData | null>(null);
@@ -96,6 +97,15 @@ export default function Home() {
     }
   }, [refreshEmails]);
 
+  const handleRefreshAll = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([refreshEmails(), refreshEvents()]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refreshEmails, refreshEvents]);
+
   const expandedEmail = emails.find((email) => email.id === expandedEmailId);
 
   useEffect(() => {
@@ -123,10 +133,11 @@ export default function Home() {
     // Note: Removed auto-refresh interval - emails now use cache and only refresh on user action
   }, [loadEmailsWithCache, loadEventsWithCache]);
 
-  // Generate summary when emails and events are loaded
+  // Generate summary when both emails and events are loaded (not loading)
    useEffect(() => {
      const generateDailySummary = async () => {
-       if (emails.length > 0 || events.length > 0) {
+       // Wait for both data sources to finish loading before generating summary
+       if (!emailsLoading && !eventsLoading && (emails.length > 0 || events.length > 0)) {
          try {
            const summaryData = await generateSummary(
              emails.slice(0, 10), // Limit to recent emails
@@ -146,15 +157,30 @@ export default function Home() {
      };
  
      generateDailySummary();
-   }, [emails, events]);
+   }, [emails, events, emailsLoading, eventsLoading]);
 
   return (
     <div className="max-w-6xl mx-auto">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">
-          Welcome to bharat
-        </h1>
+        <div className="flex items-center justify-between mb-1">
+          <h1 className="text-2xl font-bold text-gray-900">
+            Welcome to bharat
+          </h1>
+          <button
+            onClick={handleRefreshAll}
+            disabled={isRefreshing || emailsLoading || eventsLoading}
+            className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors duration-200 disabled:opacity-50"
+            title="Refresh all data from server"
+          >
+            <RefreshCw
+              className={`w-4 h-4 ${
+                isRefreshing || emailsLoading || eventsLoading ? "animate-spin" : ""
+              }`}
+            />
+            <span>Refresh All</span>
+          </button>
+        </div>
         <p className="text-gray-600 text-sm leading-relaxed">
           {summary}
         </p>
@@ -282,8 +308,8 @@ export default function Home() {
                           {events[0].title.length > 25
                             ? `${events[0].title.substring(0, 25)}...`
                             : events[0].title}
-                          {events[0].time &&
-                            ` at ${events[0].time.split(" - ")[0]}`}
+                          {events[0].time && typeof events[0].time === 'string' &&
+                            ` at ${events[0].time.includes(" - ") ? events[0].time.split(" - ")[0] : events[0].time}`}
                         </>
                       ) : (
                         "No events scheduled"
@@ -529,7 +555,7 @@ export default function Home() {
                         </div>
                         <div className="flex items-center ml-4">
                           <span className="text-xs text-gray-500">
-                            {email.time}
+                            {formatEmailTime(email.time)}
                           </span>
                           {!email.isRead && (
                             <div className="w-2 h-2 bg-blue-500 rounded-full ml-2"></div>
@@ -566,7 +592,7 @@ export default function Home() {
                     </h4>
                     <div className="flex items-center justify-between text-xs text-gray-600 mb-0.5">
                       <span>From: {expandedEmail.sender}</span>
-                      <span>{expandedEmail.time}</span>
+                      <span>{formatEmailTime(expandedEmail.time)}</span>
                     </div>
                     <div className="flex items-center">
                       <span
@@ -676,11 +702,13 @@ export default function Home() {
                       >
                         <div className="flex-shrink-0 w-28 text-sm font-medium">
                           <div className="text-blue-600 font-semibold">
-                            {event.time?.split(" - ")[0] || "TBD"}
+                            {event.time && typeof event.time === 'string' && event.time.includes(" - ") 
+                              ? event.time.split(" - ")[0] 
+                              : event.time || "TBD"}
                           </div>
-                          {event.time?.includes(" - ") && (
+                          {event.time && typeof event.time === 'string' && event.time.includes(" - ") && (
                             <div className="text-xs text-gray-500">
-                              to {event.time.split(" - ")[1]}
+                              to {typeof event.time === 'string' ? event.time.split(" - ")[1] : 'TBD'}
                             </div>
                           )}
                         </div>
@@ -714,8 +742,9 @@ export default function Home() {
                         <span className="ml-2 font-medium">
                           {
                             events.filter((e) => {
-                              const time = e.time?.split(" - ")[0];
-                              if (!time) return false;
+                              if (!e.time || typeof e.time !== 'string') return false;
+                              const time = e.time.includes(" - ") ? e.time.split(" - ")[0] : e.time;
+                              if (!time || !time.includes(":")) return false;
                               const hour = parseInt(time.split(":")[0]);
                               const period = time.includes("AM") ? "AM" : "PM";
                               return (
@@ -734,8 +763,9 @@ export default function Home() {
                         <span className="ml-2 font-medium">
                           {
                             events.filter((e) => {
-                              const time = e.time?.split(" - ")[0];
-                              if (!time) return false;
+                              if (!e.time || typeof e.time !== 'string') return false;
+                              const time = e.time.includes(" - ") ? e.time.split(" - ")[0] : e.time;
+                              if (!time || !time.includes(":")) return false;
                               const hour = parseInt(time.split(":")[0]);
                               const period = time.includes("PM") ? "PM" : "AM";
                               return period === "PM" && hour !== 12;
